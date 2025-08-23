@@ -24,6 +24,19 @@ func main() {
 		fmt.Println("Error accepting connection: ", err.Error())
 		os.Exit(1)
 	}
+	defer conn.Close()
+	
+	for {
+		b := make([]byte, 1024)
+		if _, err := conn.Read(b); err != nil {
+			fmt.Println("Error reading commands: ", err.Error())
+			break
+		}
+		fmt.Println("Received command: ", string(b))
 
-	conn.Write([]byte("+PONG\r\n"))
+		if _, err := conn.Write([]byte("+PONG\r\n")); err != nil {
+			fmt.Println("Error writing response: ", err.Error())
+			break
+		}
+	}
 }

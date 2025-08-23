@@ -79,16 +79,16 @@ func handleConn(conn net.Conn) {
 					return
 				}
 			}
-			for key, value := range store {
-				if sliceCom[4] == key {
-					fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(value), value)
-				} else {
-					if _, err := conn.Write([]byte("-1\r\n")); err != nil {
-						fmt.Println("Error writing response 'no key' on get: ", err.Error())
-						return
-					}
+			mute.RLock()
+			val, ok := store[sliceCom[4]]
+			mute.RUnlock()
+			if !ok {
+				if _, err := conn.Write([]byte("-1\r\n")); err != nil {
+					fmt.Println("Error writing response 'no key' on get: ", err.Error())
+					return
 				}
 			}
+				fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(val), val)
 		}
 	}
 }

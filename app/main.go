@@ -186,6 +186,7 @@ func HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 
 		fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(v), v)
 	case "rpush":
+		fmt.Println("RPUSH called with args:", args)
 		if len(args) < 2 {
 			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'rpush' command\r\n")); err != nil {
 				fmt.Println("Error writing response 'ERR' on rpush: ", err.Error())
@@ -248,7 +249,7 @@ func handleConn(conn net.Conn) {
 
 			args := make([]string, N)
 			
-			for i := 0; i < N; i++ {
+			for range N {
 				bt, err := reader.ReadByte()
 				if err != nil {
 					break
@@ -266,6 +267,7 @@ func handleConn(conn net.Conn) {
 					if err != nil {
 						break
 					}
+					fmt.Println("arg=", arg)
 					args = append(args, arg)
 				}
 			}

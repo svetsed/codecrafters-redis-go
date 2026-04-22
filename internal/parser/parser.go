@@ -183,9 +183,9 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 				}
 				return
 			}
-			
+			oldLenV := len(v)
 			v = append(v, args[1:]...)
-			ok = p.storage.UpdateOrSetValue(args[0], model.Entry{Value: v, ExpiresAt: val.ExpiresAt}, len(v))
+			ok = p.storage.UpdateOrSetValue(args[0], model.Entry{Value: v, ExpiresAt: val.ExpiresAt}, oldLenV)
 			if !ok {
 				if _, err := conn.Write([]byte("-ERR 'rpush' command\r\n")); err != nil {
 					fmt.Println("Error writing response 'ERR' on rpush: ", err.Error())

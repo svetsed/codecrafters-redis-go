@@ -90,7 +90,7 @@ func ReadArg(reader *bufio.Reader, numByte int) (string, error) {
 	return string(data), nil
 }
 
-func HandleArgs(conn net.Conn, cmdAndArgs ...string) {
+func HandleArgs(conn net.Conn, cmdAndArgs []string) {
 	if len(cmdAndArgs) == 0 {
 		return
 	}
@@ -273,7 +273,7 @@ func handleConn(conn net.Conn) {
 				}
 			}
 
-			HandleArgs(conn, args...)
+			HandleArgs(conn, args)
 		case '$':
 			n, err := ReadNumber(reader)
 			if err != nil {
@@ -287,7 +287,7 @@ func handleConn(conn net.Conn) {
 				break
 			}
 
-			HandleArgs(conn, arg)
+			// HandleArgs(conn, arg)
 		default:
 			reader.ReadBytes('\n')
 			conn.Write([]byte("-ERR Protocol error: unexpected first byte\r\n"))

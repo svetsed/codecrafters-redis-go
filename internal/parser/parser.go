@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	ErrReading = errors.New("read error")
+	ErrReading        = errors.New("read error")
 	ErrInvalidRequest = errors.New("invalid request")
-	ErrInvalidNum = errors.New("invalid number")
+	ErrInvalidNum     = errors.New("invalid number")
 )
 
 type Parser struct {
@@ -33,7 +33,7 @@ func NewParser(storage *storage.Storage) *Parser {
 func (p *Parser) ReadNumber(reader *bufio.Reader) (int, error) {
 	bt, err := reader.ReadBytes('\n')
 	if err != nil {
-		return  0, ErrReading
+		return 0, ErrReading
 	}
 
 	if len(bt) < 3 {
@@ -120,15 +120,15 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 				if ms > 0 {
 					expiresAt = time.Now().UnixNano()/1e6 + int64(ms)
 				}
-				p.storage.SetValue(args[0], model.Entry{Value: args[1], ExpiresAt:expiresAt})
+				p.storage.SetValue(args[0], model.Entry{Value: args[1], ExpiresAt: expiresAt})
 			}
 		}
-		
+
 		if _, err := conn.Write([]byte("+OK\r\n")); err != nil {
 			fmt.Println("Error writing response 'OK' on set: ", err.Error())
 			return
 		}
-	case "get": 
+	case "get":
 		if len(args) < 1 {
 			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'get' command\r\n")); err != nil {
 				fmt.Println("Error writing response 'ERR' on get: ", err.Error())
@@ -144,7 +144,7 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 			}
 			return
 		}
-		
+
 		if val.ExpiresAt != -1 && time.Now().UnixNano()/1e6 > val.ExpiresAt {
 			p.storage.DeleteValue(args[0])
 			if _, err := conn.Write([]byte("$-1\r\n")); err != nil {
@@ -153,7 +153,7 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 			return
 		}
 
-		v, ok := val.Value.(string); 
+		v, ok := val.Value.(string)
 		if !ok {
 			_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
 			if err != nil {
@@ -161,7 +161,7 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 			}
 			return
 		}
-		
+
 		fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(v), v)
 
 	case "rpush":
@@ -226,13 +226,13 @@ func (p *Parser) HandleConn(conn net.Conn) {
 			if err != nil {
 				break
 			}
-			
+
 			if N <= 0 {
 				break
 			}
 
 			args := make([]string, 0, N)
-			
+
 			for range N {
 				bt, err := reader.ReadByte()
 				if err != nil {

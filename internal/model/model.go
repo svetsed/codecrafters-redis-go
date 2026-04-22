@@ -1,6 +1,6 @@
 package model
 
 type Entry struct {
-	Value 	  any
+	Value     any
 	ExpiresAt int64
 }

@@ -98,6 +98,7 @@ func HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 	cmd := strings.ToLower(cmdAndArgs[0])
 	args := cmdAndArgs[1:]
 
+	fmt.Println("cmd=", cmd, "args=", args)
 	switch cmd {
 	case "echo":
 		if len(args) == 1 {

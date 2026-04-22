@@ -40,8 +40,12 @@ func (s *Storage) UpdateOrSetValue(key string, newVal model.Entry, lastLen int) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	val, _ := s.store[key]
-	// maybe need store len
+	val, exist := s.store[key]
+	if !exist {
+		s.store[key] = newVal
+		return true
+	}
+
 	v, ok := val.Value.([]string)
 	if !ok {
 		return false

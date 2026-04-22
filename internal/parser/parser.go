@@ -208,6 +208,72 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 		}
 
 		fmt.Fprintf(conn, ":%d\r\n", len(values))
+	case "lrange":
+		if len(args) < 3 {
+			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'lrange' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on lrange: ", err.Error())
+			}
+			return
+		}
+
+		val, exist := p.storage.GetValue(args[0])
+		if !exist {
+			if _, err := conn.Write([]byte("*0\r\n")); err != nil {
+				fmt.Println("Error writing response 'empty array' on lrange: ", err.Error())
+			}
+			return
+		}
+
+		start, err := strconv.Atoi(args[1])
+		if err != nil {
+			if _, err := conn.Write([]byte("-ERR not a numder index for 'lrange' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on lrange: ", err.Error())
+			}
+			return
+		}
+		stop, err := strconv.Atoi(args[2])
+		if err != nil {
+			if _, err := conn.Write([]byte("-ERR not a numder index for 'lrange' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on lrange: ", err.Error())
+			}
+			return
+		}
+
+		v, ok := val.Value.([]string)
+		if !ok {
+			_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
+			if err != nil {
+				fmt.Println("Error writing response 'wrongtype' on lrange: ", err.Error())
+			}
+			return
+		}
+		
+		if start >= len(v) {
+			if _, err := conn.Write([]byte("*0\r\n")); err != nil {
+				fmt.Println("Error writing response 'empty array' on lrange: ", err.Error())
+			}
+			return
+		}
+		if start > stop {
+			if _, err := conn.Write([]byte("*0\r\n")); err != nil {
+				fmt.Println("Error writing response 'empty array' on lrange: ", err.Error())
+			}
+			return
+		}
+		if stop > len(v) {
+			stop = len(v)
+		}
+
+		respArr := v[start:stop]
+		resp := fmt.Sprintf("*%d\r\n", len(respArr))
+		for _, elem := range respArr {
+			resp += fmt.Sprintf("$%d\r\n%s\r\n", len(elem), elem)
+		}
+
+		if _, err := conn.Write([]byte(resp)); err != nil {
+			fmt.Println("Error writing response 'not empty array' on lrange: ", err.Error())
+		}
+		return
 	}
 }
 

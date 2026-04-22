@@ -287,6 +287,8 @@ func handleConn(conn net.Conn) {
 				break
 			}
 
+			_ = arg
+
 			// HandleArgs(conn, arg)
 		default:
 			reader.ReadBytes('\n')

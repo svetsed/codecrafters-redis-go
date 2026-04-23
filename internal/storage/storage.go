@@ -68,3 +68,26 @@ func (s *Storage) UpdateOrSetValue(key string, newVal model.Entry, lastLen int) 
 	s.store[key] = model.Entry{Value: v, ExpiresAt: newVal.ExpiresAt}
 	return true
 }
+
+func (s *Storage) UpdateOrSetValueInBegin(key string, newVals []string) (int, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	val, exist := s.store[key]
+	if !exist {
+		s.store[key] = model.Entry{Value: newVals, ExpiresAt: -1}
+		return len(newVals), true
+	}
+
+	v, ok := val.Value.([]string)
+	if !ok {
+		return 0, false
+	}
+
+	newSlice := make([]string, 0, len(v) + len(newVals))
+	newSlice = append(newSlice, newVals...)
+	newSlice = append(newSlice, v...)
+
+	s.store[key] = model.Entry{Value: newSlice, ExpiresAt: val.ExpiresAt}
+	return len(newSlice), true
+}

@@ -288,6 +288,40 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 			fmt.Println("Error writing response 'not empty array' on lrange: ", err.Error())
 		}
 		return
+	case "lpush":
+		if len(args) < 2 {
+			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'lpush' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on lpush: ", err.Error())
+			}
+			return
+		}
+
+		newVals := make([]string, 0, len(args[1:]))
+		for i := len(args)-1; i >= 1; i-- {
+			newVals = append(newVals, args[i])
+		}
+
+		val, exist := p.storage.GetValue(args[0])
+		if exist {
+			_, ok := val.Value.([]string)
+			if !ok {
+				_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
+				if err != nil {
+					fmt.Println("Error writing response 'wrongtype' on lpush: ", err.Error())
+				}
+				return
+			}
+		}
+
+		length, ok := p.storage.UpdateOrSetValueInBegin(args[0], newVals)
+		if !ok {
+			if _, err := conn.Write([]byte("-ERR 'lpush' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on lpush: ", err.Error())
+			}
+			return
+		}
+
+		fmt.Fprintf(conn, ":%d\r\n", length)
 	}
 }
 

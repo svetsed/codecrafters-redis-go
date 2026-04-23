@@ -249,14 +249,14 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 		}
 
 		if start < 0 {
-			start = len(v)-start
+			start = len(v)+start
 			if start < 0 {
 				start = 0
 			}
 		}
 
 		if stop < 0 {
-			stop = len(v)-stop
+			stop = len(v)+stop
 			if stop < 0 {
 				stop = 0
 			}

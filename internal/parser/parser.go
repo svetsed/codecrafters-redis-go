@@ -247,7 +247,7 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 			}
 			return
 		}
-		
+
 		if start >= len(v) {
 			if _, err := conn.Write([]byte("*0\r\n")); err != nil {
 				fmt.Println("Error writing response 'empty array' on lrange: ", err.Error())
@@ -260,11 +260,11 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 			}
 			return
 		}
-		if stop > len(v) {
-			stop = len(v)
+		if stop >= len(v) {
+			stop = len(v)-1
 		}
 
-		respArr := v[start:stop]
+		respArr := v[start:stop+1]
 		resp := fmt.Sprintf("*%d\r\n", len(respArr))
 		for _, elem := range respArr {
 			resp += fmt.Sprintf("$%d\r\n%s\r\n", len(elem), elem)

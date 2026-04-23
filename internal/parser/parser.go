@@ -322,6 +322,23 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 		}
 
 		fmt.Fprintf(conn, ":%d\r\n", length)
+	case "llen":
+		if len(args) != 1 {
+			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'llen' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on llen: ", err.Error())
+			}
+			return
+		}
+
+		length, ok := p.storage.GetLen(args[0])
+		if !ok {
+			if _, err := conn.Write([]byte(":0\r\n")); err != nil {
+				fmt.Println("Error writing response ':0' on llen: ", err.Error())
+			}
+			return
+		}
+
+		fmt.Fprintf(conn, ":%d\r\n", length)
 	}
 }
 

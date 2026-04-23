@@ -91,3 +91,19 @@ func (s *Storage) UpdateOrSetValueInBegin(key string, newVals []string) (int, bo
 	s.store[key] = model.Entry{Value: newSlice, ExpiresAt: val.ExpiresAt}
 	return len(newSlice), true
 }
+
+func (s *Storage) GetLen(key string) (int, bool) {
+	s.mu.RLock()
+	val, exist := s.store[key]
+	s.mu.RUnlock()
+	if !exist {
+		return 0, false
+	}
+
+	v, ok := val.Value.([]string)
+	if !ok {
+		return 0, false
+	}
+
+	return len(v), true
+}

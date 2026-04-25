@@ -340,6 +340,7 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 
 		fmt.Fprintf(conn, ":%d\r\n", length)
 	case "lpop":
+		fmt.Println("LPOP len(args) = ", len(args))
 		if len(args) < 1 {
 			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'lpop' command\r\n")); err != nil {
 				fmt.Println("Error writing response 'ERR' on lpop: ", err.Error())
@@ -393,6 +394,8 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 			}
 			return
 		}
+
+		fmt.Println("LPOP respArr = ", respArr, "len(respArr) = ", len(respArr))
 
 		if len(respArr) == 1 {
 			fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(respArr[0]), respArr[0])

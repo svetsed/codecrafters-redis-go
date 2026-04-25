@@ -134,7 +134,7 @@ func (s *Storage) DeleteFromBegin(key string, n int) ([]string, bool) {
 		return respArr, true
 	}
 
-	respArr = v[n:]
+	respArr = v[:n]
 	s.store[key] = model.Entry{Value: v[n:], ExpiresAt: val.ExpiresAt}
 	return respArr, true
 }

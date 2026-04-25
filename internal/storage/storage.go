@@ -107,3 +107,34 @@ func (s *Storage) GetLen(key string) (int, bool) {
 
 	return len(v), true
 }
+
+func (s *Storage) DeleteFromBegin(key string, n int) ([]string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	val, exist := s.store[key]
+	if !exist {
+		return nil, false
+	}
+
+	v, ok := val.Value.([]string)
+	if !ok {
+		return nil, false
+	}
+
+	if n > len(v) {
+		return nil, false
+	}
+
+	respArr := make([]string, 0)
+
+	if len(v) == n {
+		respArr = v
+		s.store[key] = model.Entry{Value: []string{}, ExpiresAt: val.ExpiresAt}
+		return respArr, true
+	}
+
+	respArr = v
+	s.store[key] = model.Entry{Value: v[n:], ExpiresAt: val.ExpiresAt}
+	return respArr, true
+}

@@ -339,6 +339,75 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 		}
 
 		fmt.Fprintf(conn, ":%d\r\n", length)
+	case "lpop":
+		if len(args) < 1 {
+			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'lpop' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on lpop: ", err.Error())
+			}
+			return
+		}
+
+		n := 0
+		if len(args) == 1 {
+			n = 1
+		} else {
+			tmp, err  := strconv.Atoi(args[1])
+			if err != nil {
+				if _, err := conn.Write([]byte("-ERR failed convert to number argument 'lpop' command\r\n")); err != nil {
+					fmt.Println("Error writing response 'ERR' on lpop: ", err.Error())
+				}
+				return
+			}
+			n = tmp
+		}
+
+		// неплохо было бы тут сразу знать сколько элементов в model.Entry
+		val, exist := p.storage.GetValue(args[0])
+		if !exist {
+			if _, err := conn.Write([]byte("$-1\r\n")); err != nil {
+				fmt.Println("Error writing response 'null bulk string' on lpop: ", err.Error())
+			}
+			return
+		}
+		
+		v, ok := val.Value.([]string)
+		if !ok {
+			_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
+			if err != nil {
+				fmt.Println("Error writing response 'wrongtype' on lpush: ", err.Error())
+			}
+			return
+		}
+
+		if n > len(v) {
+			if _, err := conn.Write([]byte("-ERR number bigger then length 'lpop' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on lpop: ", err.Error())
+			}
+			return
+		}
+
+		respArr, ok := p.storage.DeleteFromBegin(args[0], n)
+		if !ok {
+			if _, err := conn.Write([]byte("-ERR failed to delete 'lpop' command\r\n")); err != nil {
+				fmt.Println("Error writing response 'ERR' on lpop: ", err.Error())
+			}
+			return
+		}
+
+		if len(respArr) == 1 {
+			fmt.Fprintf(conn, "$%s\r\n", respArr)
+			return
+		}
+
+		resp := fmt.Sprintf("*%d\r\n", len(respArr))
+		for _, elem := range respArr {
+			resp += fmt.Sprintf("$%d\r\n%s\r\n", len(elem), elem)
+		}
+
+		if _, err := conn.Write([]byte(resp)); err != nil {
+			fmt.Println("Error writing response 'RESP array' on lpop: ", err.Error())
+		}
+		return
 	}
 }
 

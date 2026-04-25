@@ -395,7 +395,7 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 		}
 
 		if len(respArr) == 1 {
-			fmt.Fprintf(conn, "$%s\r\n", respArr)
+			fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(respArr[0]), respArr[0])
 			return
 		}
 

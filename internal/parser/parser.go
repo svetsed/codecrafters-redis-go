@@ -113,7 +113,7 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 		}
 
 	case "set":
-		if len(args) < 2 { // min key value
+		if len(args) < 2 || len(args) == 3 { // min key value
 			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'set' command\r\n")); err != nil {
 				fmt.Println("Error writing response 'ERR' on set: ", err.Error())
 			}
@@ -122,10 +122,7 @@ func (p *Parser) HandleArgs(conn net.Conn, cmdAndArgs ...string) {
 		
 		if len(args) == 2 {
 			p.storage.SetValue(args[0], model.Entry{Value: args[1], ExpiresAt: -1})
-			return
-		} 
-		
-		if len(args) >= 4 { // key value [px] time
+		} else if len(args) >= 4 { // key value [px] time
 			if strings.ToLower(args[2]) == "px" {
 				var expiresAt int64 = -1
 				ms, err := strconv.Atoi(args[3])

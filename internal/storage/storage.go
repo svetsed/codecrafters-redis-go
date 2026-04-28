@@ -30,8 +30,13 @@ func NewStorage(subs *subscriber.Subscribers) *Storage {
 
 func (s *Storage) GetValue(key string) (model.Entry, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	val, exist := s.store[key]
+	s.mu.RUnlock()
+	
+	if !exist {
+		return model.Entry{}, exist
+	}
+
 	return *val, exist
 }
 

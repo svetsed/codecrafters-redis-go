@@ -3,21 +3,41 @@ package main
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"os"
+
+	_ "net/http/pprof"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/parser"
 	"github.com/codecrafters-io/redis-starter-go/internal/storage"
+	"github.com/codecrafters-io/redis-starter-go/internal/subscriber"
 )
 
+func pprof() {
+	// Запускаем HTTP-сервер для pprof
+    go func() {
+        fmt.Println("pprof server listening on http://localhost:6060/debug/pprof/")
+        if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+            fmt.Printf("pprof error: %v\n", err)
+        }
+    }()
+}
+
 func main() {
+	_, exist := os.LookupEnv("RUN_PPROF_SERV")
+	if exist {
+		pprof()
+	}
+
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
 
-	storage := storage.NewStorage()
-	parser := parser.NewParser(storage)
+	subs := subscriber.NewSubscribers()
+	storage := storage.NewStorage(subs)
+	parser := parser.NewParser(storage, subs)
 
 	for {
 		conn, err := l.Accept()

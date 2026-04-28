@@ -1,19 +1,30 @@
 package storage
 
 import (
+	"errors"
+	"net"
 	"sync"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/model"
+	"github.com/codecrafters-io/redis-starter-go/internal/subscriber"
+)
+
+var (
+	WrongType 	 = errors.New("WRONGTYPE")
+	InvalidInput = errors.New("incorrect input data")
+	NoValues	 = errors.New("key does not exist or is empty") 
 )
 
 type Storage struct {
-	store map[string]model.Entry
+	store map[string]*model.Entry
+	subs  *subscriber.Subscribers
 	mu    sync.RWMutex
 }
 
-func NewStorage() *Storage {
+func NewStorage(subs *subscriber.Subscribers) *Storage {
 	return &Storage{
-		store: make(map[string]model.Entry),
+		store: make(map[string]*model.Entry),
+		subs: subs,
 	}
 }
 
@@ -21,13 +32,20 @@ func (s *Storage) GetValue(key string) (model.Entry, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	val, exist := s.store[key]
-	return val, exist
+	return *val, exist
 }
 
 func (s *Storage) SetValue(key string, val model.Entry) {
 	s.mu.Lock()
-	s.store[key] = val
-	s.mu.Unlock()
+	defer s.mu.Unlock()
+	entry, exist := s.store[key]
+	if !exist {
+		s.store[key] = &val
+		return
+	}
+
+	entry.Value = val.Value
+	entry.ExpiresAt = val.ExpiresAt
 }
 
 func (s *Storage) DeleteValue(key string) {
@@ -36,71 +54,141 @@ func (s *Storage) DeleteValue(key string) {
 	delete(s.store, key)
 }
 
-func (s *Storage) UpdateOrSetValue(key string, newVal model.Entry, lastLen int) bool {
+func (s *Storage) RPush(key string, values []string) (int, error) {
+	if len(values) == 0 || key == "" {
+		return 0, InvalidInput
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// if new -> just added
-	val, exist := s.store[key]
+	entry, exist := s.store[key]
 	if !exist {
-		s.store[key] = newVal
-		return true
+		newSlice := make([]string, len(values))
+		copy(newSlice, values)
+		s.store[key] = &model.Entry{Value: newSlice, ExpiresAt: -1}
+		return len(values), nil
 	}
 
-	v, ok := val.Value.([]string)
+	list, ok := entry.Value.([]string)
 	if !ok {
-		return false
+		return 0, WrongType
 	}
 
-	// check if there have been changes between mutex
-	if len(v) == lastLen {
-		s.store[key] = newVal
-		return true
-	}
-
-	nv, ok := newVal.Value.([]string)
-	if !ok {
-		return false
-	}
-
-	// if length has changed, then add it again
-	v = append(v, nv...)
-	s.store[key] = model.Entry{Value: v, ExpiresAt: newVal.ExpiresAt}
-	return true
+	newList := append(list, values...)
+	entry.Value = newList
+	return len(newList), nil
 }
 
-func (s *Storage) UpdateOrSetValueInBegin(key string, newVals []string) (int, bool) {
+func (s *Storage) LPush(key string, values []string) (int, error) {
+	if len(values) == 0 || key == "" {
+		return 0, InvalidInput
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	val, exist := s.store[key]
+	entry, exist := s.store[key]
+	if exist {
+		list, ok := entry.Value.([]string)
+		if !ok {
+			return 0, WrongType
+		}
+
+		// add in begin
+		newList := make([]string, 0, len(list) + len(values))
+		newList = append(newList, values...)
+		newList = append(newList, list...)
+		entry.Value = newList
+		return len(newList), nil
+	}
+
+	// no list -> creating
+	newList := make([]string, len(values))
+	copy(newList, values)
+	s.store[key] = &model.Entry{Value: newList, ExpiresAt: -1}
+	return len(values), nil
+}
+
+func (s *Storage) LPop(key string, n int) ([]string, error) {
+	if key == "" || n <= 0 {
+		return nil, InvalidInput
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, exist := s.store[key]
 	if !exist {
-		s.store[key] = model.Entry{Value: newVals, ExpiresAt: -1}
-		return len(newVals), true
+		return nil, nil // no key
 	}
 
-	v, ok := val.Value.([]string)
+	list, ok := entry.Value.([]string)
 	if !ok {
-		return 0, false
+		return nil, WrongType
 	}
 
-	newSlice := make([]string, 0, len(v) + len(newVals))
-	newSlice = append(newSlice, newVals...)
-	newSlice = append(newSlice, v...)
+	if n > len(list) {
+		return nil, InvalidInput
+	}
 
-	s.store[key] = model.Entry{Value: newSlice, ExpiresAt: val.ExpiresAt}
-	return len(newSlice), true
+	removed := make([]string, n)
+	copy(removed, list[:n])
+	if n == len(list) {
+		delete(s.store, key)
+		// entry.Value = []string{}
+	} else {
+		entry.Value = list[n:]
+	}
+
+	return removed, nil
+}
+
+func (s *Storage) LPopFirst(key string) (string, error) {
+	if key == "" {
+		return "", InvalidInput
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, exist := s.store[key]
+	if !exist {
+		return "", NoValues
+	}
+
+	list, ok := entry.Value.([]string)
+	if !ok {
+		return "", WrongType
+	}
+
+	if len(list) == 0 {
+		delete(s.store, key)
+		return "", NoValues
+	}
+
+	removed := ""
+	if len(list) == 1 {
+		removed = list[0]
+		delete(s.store, key)
+		return removed, nil
+	} 
+
+	removed = list[0]
+	entry.Value = list[1:]
+
+	return removed, nil
 }
 
 func (s *Storage) GetLen(key string) (int, bool) {
 	s.mu.RLock()
-	val, exist := s.store[key]
+	entry, exist := s.store[key]
 	s.mu.RUnlock()
 	if !exist {
 		return 0, false
 	}
 
-	v, ok := val.Value.([]string)
+	v, ok := entry.Value.([]string)
 	if !ok {
 		return 0, false
 	}
@@ -108,33 +196,51 @@ func (s *Storage) GetLen(key string) (int, bool) {
 	return len(v), true
 }
 
-func (s *Storage) DeleteFromBegin(key string, n int) ([]string, bool) {
+func (s *Storage) BLPop(conn net.Conn, key string, time int) ([]string, error) {
+	if key == "" || time < 0 {
+		return nil, InvalidInput
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	val, exist := s.store[key]
+	remove, err := s.lpopFirstLocked(key)
+	if err != nil {
+		if !errors.Is(err, NoValues) {
+			return nil, err
+		}
+
+		// send client in queque
+		s.subs.Append(conn, key)
+		return nil, nil
+	}
+
+	return []string{key, remove}, nil
+}
+
+func (s *Storage) lpopFirstLocked(key string) (string, error) {
+	entry, exist := s.store[key]
 	if !exist {
-		return nil, false
+		return "", NoValues
 	}
 
-	v, ok := val.Value.([]string)
+	list, ok := entry.Value.([]string)
 	if !ok {
-		return nil, false
+		return "", WrongType
+	}
+	
+	if len(list) == 0 {
+		return "", NoValues
+	}
+	
+	remove := ""
+	if len(list) == 1 {
+		remove = list[0]
+		delete(s.store, key)
+		return remove, nil
 	}
 
-	if n > len(v) {
-		return nil, false
-	}
-
-	respArr := make([]string, 0)
-
-	if len(v) == n {
-		respArr = v
-		s.store[key] = model.Entry{Value: []string{}, ExpiresAt: val.ExpiresAt}
-		return respArr, true
-	}
-
-	respArr = v[:n]
-	s.store[key] = model.Entry{Value: v[n:], ExpiresAt: val.ExpiresAt}
-	return respArr, true
+	remove = list[0]
+	entry.Value = list[1:]
+	return remove, nil
 }

@@ -12,7 +12,6 @@ const (
 	NullBulkString = "$-1\r\n"
 )
 
-// как сделать это через структуру?
 var bufPool = sync.Pool{
 	New: func() interface{} { return &bytes.Buffer{} },
 }

@@ -2,11 +2,9 @@ package storage
 
 import (
 	"errors"
-	"net"
 	"sync"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/model"
-	"github.com/codecrafters-io/redis-starter-go/internal/subscriber"
 )
 
 var (
@@ -17,14 +15,12 @@ var (
 
 type Storage struct {
 	store map[string]*model.Entry
-	subs  *subscriber.Subscribers
 	mu    sync.RWMutex
 }
 
-func NewStorage(subs *subscriber.Subscribers) *Storage {
+func NewStorage() *Storage {
 	return &Storage{
 		store: make(map[string]*model.Entry),
-		subs: subs,
 	}
 }
 
@@ -199,28 +195,6 @@ func (s *Storage) GetLen(key string) (int, bool) {
 	}
 
 	return len(v), true
-}
-
-func (s *Storage) BLPop(conn net.Conn, key string, time int) ([]string, error) {
-	if key == "" || time < 0 {
-		return nil, InvalidInput
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	remove, err := s.lpopFirstLocked(key)
-	if err != nil {
-		if !errors.Is(err, NoValues) {
-			return nil, err
-		}
-
-		// send client in queque
-		s.subs.Append(conn, key)
-		return nil, nil
-	}
-
-	return []string{key, remove}, nil
 }
 
 func (s *Storage) lpopFirstLocked(key string) (string, error) {

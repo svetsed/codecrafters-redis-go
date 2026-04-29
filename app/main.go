@@ -8,6 +8,7 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/codecrafters-io/redis-starter-go/internal/handler"
 	"github.com/codecrafters-io/redis-starter-go/internal/parser"
 	"github.com/codecrafters-io/redis-starter-go/internal/storage"
 	"github.com/codecrafters-io/redis-starter-go/internal/subscriber"
@@ -36,8 +37,9 @@ func main() {
 	}
 
 	subs := subscriber.NewSubscribers()
-	storage := storage.NewStorage(subs)
-	parser := parser.NewParser(storage, subs)
+	storage := storage.NewStorage()
+	handler := handler.NewHandler(storage, subs)
+	parser := parser.NewParser(handler)
 
 	for {
 		conn, err := l.Accept()

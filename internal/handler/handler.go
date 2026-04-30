@@ -451,7 +451,6 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 				if ok := h.subs.RemoveClient(client, args[0]); !ok {
 					fmt.Println("Error remove client from queue on blpop deferred")
 				}
-			default:
 			}
 		}
 		

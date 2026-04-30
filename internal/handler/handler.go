@@ -402,8 +402,6 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 			return
 		}
 
-		fmt.Println(args[1], " = ", timeoutSec)
-
 		removed, err := h.storage.LPopFirst(args[0])
 		if err != nil {
 			if errors.Is(err, storage.WrongType) {
@@ -438,14 +436,13 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 			}
 		} else {
 			timeoutDur := time.Duration(timeoutSec * float64(time.Second))
-			fmt.Println(timeoutDur)
 			select {
 			case res :=  <- client.WakeUpChan:
 				if err := writer.WriteRESPArray(client.Conn, []string{res.Key, res.Value}); err != nil {
 					fmt.Println("Error writing response 'RESP array' on blpop deferred: ", err.Error())
 				}
 			case <- time.After(timeoutDur):
-				if _, err := client.Conn.Write([]byte(writer.EmptyArray)); err != nil {
+				if _, err := client.Conn.Write([]byte(writer.NullArray)); err != nil {
 					fmt.Println("Error writing response 'null array timeout' on blpop deferred: ", err.Error())
 				}
 				if ok := h.subs.RemoveClient(client, args[0]); !ok {

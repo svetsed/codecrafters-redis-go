@@ -9,6 +9,7 @@ import (
 
 const (
 	EmptyArray 	   = "*0\r\n"
+	NullArray      = "*-1\r\n"
 	NullBulkString = "$-1\r\n"
 )
 

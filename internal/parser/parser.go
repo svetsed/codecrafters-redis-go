@@ -73,10 +73,10 @@ func (p *Parser) ReadArg(reader *bufio.Reader, numByte int) (string, error) {
 
 func (p *Parser) HandleConn(conn net.Conn) {
 	client := &model.Client{
-        Conn:      conn,
-        WakeUpChan: make(chan *model.WakeUpData, 1),
+		Conn:           conn,
+		WakeUpChan:     make(chan *model.WakeUpData, 1),
 		SubscribedKeys: make(map[string]struct{}),
-    }
+	}
 
 	defer func() {
 		p.handler.Subs.UnsubscribeAll(client)

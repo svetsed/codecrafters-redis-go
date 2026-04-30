@@ -11,13 +11,13 @@ type Entry struct {
 }
 
 type Client struct {
-    Conn       net.Conn
-    WakeUpChan chan *WakeUpData
-    SubscribedKeys map[string]struct{}
-    Mu             sync.RWMutex
+	Conn           net.Conn
+	WakeUpChan     chan *WakeUpData
+	SubscribedKeys map[string]struct{}
+	Mu             sync.RWMutex
 }
 
 type WakeUpData struct {
-    Key   string
-    Value string
+	Key   string
+	Value string
 }

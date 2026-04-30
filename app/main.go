@@ -16,12 +16,12 @@ import (
 
 func pprof() {
 	// Запускаем HTTP-сервер для pprof
-    go func() {
-        fmt.Println("pprof server listening on http://localhost:6060/debug/pprof/")
-        if err := http.ListenAndServe("localhost:6060", nil); err != nil {
-            fmt.Printf("pprof error: %v\n", err)
-        }
-    }()
+	go func() {
+		fmt.Println("pprof server listening on http://localhost:6060/debug/pprof/")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			fmt.Printf("pprof error: %v\n", err)
+		}
+	}()
 }
 
 func main() {

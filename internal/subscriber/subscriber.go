@@ -8,7 +8,7 @@ import (
 
 type Subscribers struct {
 	queue map[string][]*model.Client
-	mu	   sync.RWMutex
+	mu    sync.RWMutex
 }
 
 func NewSubscribers() *Subscribers {
@@ -33,7 +33,7 @@ func (sb *Subscribers) Get(key string) (*model.Client, bool) {
 	if !exist {
 		return nil, false
 	}
-	
+
 	if len(clients) == 0 {
 		delete(sb.queue, key)
 		return nil, false
@@ -48,7 +48,7 @@ func (sb *Subscribers) Get(key string) (*model.Client, bool) {
 		delete(sb.queue, key)
 		return removedClient, true
 	}
-	
+
 	sb.queue[key] = clients[1:]
 	return removedClient, true
 }

@@ -16,7 +16,7 @@ import (
 
 const (
 	WRONGTYPE = "WRONGTYPE"
-	ERR		  = "ERR"
+	ERR       = "ERR"
 )
 
 type Handler struct {
@@ -54,7 +54,7 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		}
 
 		h.writeRESPArray(conn, "echo", args)
-		
+
 	case "ping":
 		h.writeSimpleString(conn, "ping", "PONG")
 
@@ -62,8 +62,8 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		if len(args) < 2 { // min key value
 			h.writeError(conn, "set", ERR, "wrong number of arguments for 'set' command")
 			return
-		} 
-		
+		}
+
 		value := args[1]
 		var expiresAt int64 = -1
 		if len(args) > 2 {
@@ -210,7 +210,7 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 			return
 		}
 		if stop >= len(v) {
-			stop = len(v)-1
+			stop = len(v) - 1
 		}
 
 		h.writeRESPArray(conn, "lrange", v[start:stop+1]) //inclusive
@@ -223,7 +223,7 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 
 		// invert
 		newVals := make([]string, 0, len(args[1:]))
-		for i := len(args)-1; i >= 1; i-- {
+		for i := len(args) - 1; i >= 1; i-- {
 			newVals = append(newVals, args[i])
 		}
 
@@ -283,7 +283,7 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		if len(args) == 1 {
 			n = 1
 		} else {
-			tmp, err  := strconv.Atoi(args[1])
+			tmp, err := strconv.Atoi(args[1])
 			if err != nil {
 				h.writeError(conn, "lpop", ERR, "failed convert argument to number for 'lpop' command")
 				return
@@ -343,28 +343,28 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 			return
 		}
 
-		// rpush/lpush may added something 
+		// rpush/lpush may added something
 
 		h.Subs.Append(client, args[0])
 
 		if timeoutSec <= 0 {
-			res :=  <- client.WakeUpChan
+			res := <-client.WakeUpChan
 			h.writeRESPArray(client.Conn, "blpop", []string{res.Key, res.Value})
 			return
 		}
 
 		timer := time.NewTimer(time.Duration(timeoutSec * float64(time.Second)))
 		select {
-		case res := <- client.WakeUpChan:
+		case res := <-client.WakeUpChan:
 			timer.Stop()
 			h.writeRESPArray(client.Conn, "blpop", []string{res.Key, res.Value})
-		case <- timer.C:
+		case <-timer.C:
 			h.writeNullOrEmpty(client.Conn, "blpop timeout", '*')
 			if ok := h.Subs.RemoveClient(client, args[0]); !ok {
 				fmt.Println("failed to remove client from queue on blpop deferred")
 			}
 		}
-		
+
 	}
 }
 
@@ -387,8 +387,8 @@ func (h *Handler) writeError(conn net.Conn, from string, code string, msg string
 // +msg\r\n
 func (h *Handler) writeSimpleString(conn net.Conn, from string, msg string) {
 	if _, err := conn.Write([]byte("+" + msg + "\r\n")); err != nil {
-        fmt.Printf("failed to write simple string from '%s': %v\n", from, err)
-    }
+		fmt.Printf("failed to write simple string from '%s': %v\n", from, err)
+	}
 }
 
 // :num\r\n
@@ -431,10 +431,10 @@ func (h *Handler) writeRESPArray(conn net.Conn, from string, items []string) {
 }
 
 func normalizeIndex(idx *int, length int) {
-    if *idx < 0 {
-        *idx += length
-        if *idx < 0 {
-            *idx = 0
-        }
-    }
+	if *idx < 0 {
+		*idx += length
+		if *idx < 0 {
+			*idx = 0
+		}
+	}
 }

@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	WrongType 	 = errors.New("WRONGTYPE")
+	WrongType    = errors.New("WRONGTYPE")
 	InvalidInput = errors.New("incorrect input data")
-	NoValues	 = errors.New("key does not exist or is empty") 
+	NoValues     = errors.New("key does not exist or is empty")
 )
 
 type Storage struct {
@@ -28,7 +28,7 @@ func (s *Storage) GetValue(key string) (model.Entry, bool) {
 	s.mu.RLock()
 	val, exist := s.store[key]
 	s.mu.RUnlock()
-	
+
 	if !exist {
 		return model.Entry{}, exist
 	}
@@ -97,7 +97,7 @@ func (s *Storage) LPush(key string, values []string) (int, error) {
 		}
 
 		// add in begin
-		newList := make([]string, 0, len(list) + len(values))
+		newList := make([]string, 0, len(list)+len(values))
 		newList = append(newList, values...)
 		newList = append(newList, list...)
 		entry.Value = newList
@@ -173,7 +173,7 @@ func (s *Storage) LPopFirst(key string) (string, error) {
 		removed = list[0]
 		delete(s.store, key)
 		return removed, nil
-	} 
+	}
 
 	removed = list[0]
 	entry.Value = list[1:]
@@ -207,11 +207,11 @@ func (s *Storage) lpopFirstLocked(key string) (string, error) {
 	if !ok {
 		return "", WrongType
 	}
-	
+
 	if len(list) == 0 {
 		return "", NoValues
 	}
-	
+
 	remove := ""
 	if len(list) == 1 {
 		remove = list[0]

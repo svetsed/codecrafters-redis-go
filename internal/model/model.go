@@ -1,6 +1,9 @@
 package model
 
-import "net"
+import (
+	"net"
+	"sync"
+)
 
 type Entry struct {
 	Value     any
@@ -10,6 +13,8 @@ type Entry struct {
 type Client struct {
     Conn       net.Conn
     WakeUpChan chan *WakeUpData
+    SubscribedKeys map[string]struct{}
+    Mu             sync.RWMutex
 }
 
 type WakeUpData struct {

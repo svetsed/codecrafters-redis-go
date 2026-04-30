@@ -39,22 +39,28 @@ func (sb *Subscribers) Get(key string) (*model.Client, bool) {
 		return nil, false
 	}
 
-	var remove *model.Client
+	removedClient := clients[0]
+	removedClient.Mu.Lock()
+	delete(removedClient.SubscribedKeys, key)
+	removedClient.Mu.Unlock()
+
 	if len(clients) == 1 {
-		remove = clients[0]
 		delete(sb.queue, key)
-		return remove, true
+		return removedClient, true
 	}
 	
-	remove = clients[0]
 	sb.queue[key] = clients[1:]
-	return remove, true
+	return removedClient, true
 }
 
 func (sb *Subscribers) Append(client *model.Client, key string) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	sb.queue[key] = append(sb.queue[key], client)
+
+	client.Mu.Lock()
+	client.SubscribedKeys[key] = struct{}{}
+	client.Mu.Unlock()
 }
 
 func (sb *Subscribers) RemoveClient(client *model.Client, key string) bool {
@@ -80,5 +86,22 @@ func (sb *Subscribers) RemoveClient(client *model.Client, key string) bool {
 		sb.queue[key] = newList
 	}
 
+	client.Mu.Lock()
+	delete(client.SubscribedKeys, key)
+	client.Mu.Unlock()
+
 	return true
+}
+
+func (sb *Subscribers) UnsubscribeAll(client *model.Client) {
+	client.Mu.RLock()
+	keys := make([]string, 0, len(client.SubscribedKeys))
+	for k := range client.SubscribedKeys {
+		keys = append(keys, k)
+	}
+	client.Mu.RUnlock()
+
+	for _, key := range keys {
+		sb.RemoveClient(client, key)
+	}
 }

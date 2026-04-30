@@ -21,13 +21,13 @@ const (
 
 type Handler struct {
 	storage *storage.Storage
-	subs    *subscriber.Subscribers
+	Subs    *subscriber.Subscribers
 }
 
 func NewHandler(storage *storage.Storage, subs *subscriber.Subscribers) *Handler {
 	return &Handler{
 		storage: storage,
-		subs:    subs,
+		Subs:    subs,
 	}
 }
 
@@ -150,11 +150,11 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		h.writeInteger(conn, "rpush", newLen)
 
 		//blpop
-		if client, ok := h.subs.Get(args[0]); ok {
+		if client, ok := h.Subs.Get(args[0]); ok {
 			removed, err := h.storage.LPopFirst(args[0])
 			if err != nil {
 				if errors.Is(err, storage.NoValues) {
-					h.subs.Append(client, args[0])
+					h.Subs.Append(client, args[0])
 					return
 				}
 				if errors.Is(err, storage.WrongType) {
@@ -240,12 +240,12 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		h.writeInteger(conn, "lpush", newLen)
 
 		//blpop
-		if client, ok := h.subs.Get(args[0]); ok {
+		if client, ok := h.Subs.Get(args[0]); ok {
 			removed, err := h.storage.LPopFirst(args[0])
 			if err != nil {
 				if errors.Is(err, storage.NoValues) {
 					// залогировать
-					h.subs.Append(client, args[0])
+					h.Subs.Append(client, args[0])
 					return
 				}
 				if errors.Is(err, storage.WrongType) {
@@ -345,7 +345,7 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 
 		// rpush/lpush may added something 
 
-		h.subs.Append(client, args[0])
+		h.Subs.Append(client, args[0])
 
 		if timeoutSec <= 0 {
 			res :=  <- client.WakeUpChan
@@ -360,7 +360,7 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 			h.writeRESPArray(client.Conn, "blpop", []string{res.Key, res.Value})
 		case <- timer.C:
 			h.writeNullOrEmpty(client.Conn, "blpop timeout", '*')
-			if ok := h.subs.RemoveClient(client, args[0]); !ok {
+			if ok := h.Subs.RemoveClient(client, args[0]); !ok {
 				fmt.Println("failed to remove client from queue on blpop deferred")
 			}
 		}

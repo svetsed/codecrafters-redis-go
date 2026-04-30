@@ -75,9 +75,12 @@ func (p *Parser) HandleConn(conn net.Conn) {
 	client := &model.Client{
         Conn:      conn,
         WakeUpChan: make(chan *model.WakeUpData, 1),
+		SubscribedKeys: make(map[string]struct{}),
     }
 
 	defer func() {
+		p.handler.Subs.UnsubscribeAll(client)
+		close(client.WakeUpChan)
 		client.Conn.Close()
 	}()
 

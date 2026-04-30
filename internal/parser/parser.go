@@ -92,11 +92,11 @@ func (p *Parser) HandleConn(conn net.Conn) {
 		case '*':
 			N, err := p.ReadNumber(reader)
 			if err != nil {
-				break
+				return
 			}
 
 			if N <= 0 {
-				break
+				return
 			}
 
 			args := make([]string, 0, N)
@@ -104,20 +104,20 @@ func (p *Parser) HandleConn(conn net.Conn) {
 			for range N {
 				bt, err := reader.ReadByte()
 				if err != nil {
-					break
+					return
 				}
 
 				if bt == '$' {
 					n, err := p.ReadNumber(reader)
 					if err != nil {
-						break
+						return
 					}
 					if n <= 0 {
-						break
+						return
 					}
 					arg, err := p.ReadArg(reader, n)
 					if err != nil {
-						break
+						return
 					}
 					// fmt.Println("arg=", arg)
 					args = append(args, arg)
@@ -129,14 +129,14 @@ func (p *Parser) HandleConn(conn net.Conn) {
 		case '$':
 			n, err := p.ReadNumber(reader)
 			if err != nil {
-				break
+				return
 			}
 			if n <= 0 {
-				break
+				return
 			}
 			arg, err := p.ReadArg(reader, n)
 			if err != nil {
-				break
+				return
 			}
 
 			p.handler.HandleArgs(client, arg)

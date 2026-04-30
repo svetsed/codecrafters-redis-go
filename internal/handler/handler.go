@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,11 @@ import (
 	"github.com/codecrafters-io/redis-starter-go/internal/storage"
 	"github.com/codecrafters-io/redis-starter-go/internal/subscriber"
 	"github.com/codecrafters-io/redis-starter-go/internal/writer"
+)
+
+const (
+	WRONGTYPE = "WRONGTYPE"
+	ERR		  = "ERR"
 )
 
 type Handler struct {
@@ -28,7 +34,7 @@ func NewHandler(storage *storage.Storage, subs *subscriber.Subscribers) *Handler
 func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 	conn := client.Conn
 	if len(cmdAndArgs) == 0 {
-		conn.Write([]byte("-ERR empty command\r\n"))
+		h.writeError(conn, "HandleArgs", ERR, "empty command")
 		return
 	}
 
@@ -38,33 +44,23 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 	switch cmd {
 	case "echo":
 		if len(args) == 0 {
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'echo' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on echo: ", err.Error())
-			}
+			h.writeError(conn, "echo", ERR, "wrong number of arguments for 'echo' command")
 			return
 		}
 
 		if len(args) == 1 {
-			if err := writer.WriteBulkString(conn, args[0]); err != nil {
-				fmt.Println("Error writing response 'bulk string' on echo: ", err.Error())
-			}
+			h.writeBulkString(conn, "echo", args[0])
 			return
 		}
 
-		if err := writer.WriteRESPArray(conn, args); err != nil {
-			fmt.Println("Error writing response 'RESP array' on echo: ", err.Error())
-		}
+		h.writeRESPArray(conn, "echo", args)
 		
 	case "ping":
-		if _, err := conn.Write([]byte("+PONG\r\n")); err != nil {
-			fmt.Println("Error writing response on ping: ", err.Error())
-		}
+		h.writeSimpleString(conn, "ping", "PONG")
 
 	case "set":
 		if len(args) < 2 { // min key value
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'set' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on set: ", err.Error())
-			}
+			h.writeError(conn, "set", ERR, "wrong number of arguments for 'set' command")
 			return
 		} 
 		
@@ -74,20 +70,17 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 			i := 2
 			opt := strings.ToLower(args[i])
 			if i+1 >= len(args) {
-				if _, err := conn.Write([]byte("-ERR missing value for option\r\n")); err != nil {
-					fmt.Println("Error writing response 'ERR' on set: ", err.Error())
-				}
+				h.writeError(conn, "set", ERR, "missing value for option")
 				return
 			}
 			valStr := args[i+1]
+
 			switch opt {
 			case "px":
 				// milliseconds
-				ms, err :=  strconv.ParseInt(valStr, 10, 64)
+				ms, err := strconv.ParseInt(valStr, 10, 64)
 				if err != nil {
-					if _, err := conn.Write([]byte("-ERR arg after [px] must be a number for 'set' command\r\n")); err != nil {
-						fmt.Println("Error writing response 'ERR' on set: ", err.Error())
-					}
+					h.writeError(conn, "set", ERR, "argument after [px] must be a number")
 					return
 				}
 				if ms > 0 {
@@ -95,91 +88,66 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 				}
 			case "ex":
 				// seconds
-				sec, err :=  strconv.ParseInt(valStr, 10, 64)
+				sec, err := strconv.ParseFloat(valStr, 64)
 				if err != nil {
-					if _, err := conn.Write([]byte("-ERR arg after [ex] must be a number for 'set' command\r\n")); err != nil {
-						fmt.Println("Error writing response 'ERR' on set: ", err.Error())
-					}
+					h.writeError(conn, "set", ERR, "argument after [ex] must be a number")
 					return
 				}
 				if sec > 0 {
 					expiresAt = time.Now().UnixNano()/1e6 + int64(sec*1000)
 				}
 			default:
-				if _, err := conn.Write([]byte("-ERR unknown options for 'set' command\r\n")); err != nil {
-					fmt.Println("Error writing response 'ERR' on set: ", err.Error())
-				}
+				h.writeError(conn, "set", ERR, "unknown options for command")
 				return
 			}
 		}
 
 		h.storage.SetValue(args[0], model.Entry{Value: value, ExpiresAt: expiresAt})
-		if _, err := conn.Write([]byte("+OK\r\n")); err != nil {
-			fmt.Println("Error writing response 'OK' on set: ", err.Error())
-		}
+		h.writeSimpleString(conn, "set", "OK")
 
 	case "get":
 		if len(args) < 1 {
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'get' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on get: ", err.Error())
-			}
+			h.writeError(conn, "get", ERR, "wrong number of arguments for 'get' command")
 			return
 		}
 
 		val, ok := h.storage.GetValue(args[0])
 		if !ok {
-			if _, err := conn.Write([]byte(writer.NullBulkString)); err != nil {
-				fmt.Println("Error writing response 'no key' on get: ", err.Error())
-			}
+			h.writeNullOrEmpty(conn, "get: no key", '$')
 			return
 		}
 
 		if val.ExpiresAt != -1 && time.Now().UnixNano()/1e6 > val.ExpiresAt {
 			h.storage.DeleteValue(args[0])
-			if _, err := conn.Write([]byte(writer.NullBulkString)); err != nil {
-				fmt.Println("Error writing response 'no key' on get: ", err.Error())
-			}
+			h.writeNullOrEmpty(conn, "get: after DeleteValue", '$')
 			return
 		}
 
 		v, ok := val.Value.(string)
 		if !ok {
-			_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
-			if err != nil {
-				fmt.Println("Error writing response 'wrongtype' on get: ", err.Error())
-			}
+			h.writeError(conn, "get", WRONGTYPE, "operation against a key holding the wrong kind of value")
 			return
 		}
 
-		if err := writer.WriteBulkString(conn, v); err != nil {
-			fmt.Println("Error writing response 'bulk string' on get: ", err.Error())
-		}
+		h.writeBulkString(conn, "get", v)
 
 	case "rpush":
 		if len(args) < 2 {
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'rpush' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on rpush: ", err.Error())
-			}
+			h.writeError(conn, "rpush", ERR, "wrong number of arguments for 'rpush' command")
 			return
 		}
 
 		newLen, err := h.storage.RPush(args[0], args[1:])
 		if err != nil {
 			if errors.Is(err, storage.WrongType) {
-				_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
-				if err != nil {
-					fmt.Println("Error writing response 'wrongtype' on rpush: ", err.Error())
-				}
+				h.writeError(conn, "rpush", WRONGTYPE, "operation against a key holding the wrong kind of value")
 				return
 			}
-
-			if _, err := conn.Write([]byte("-ERR 'rpush' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on rpush: ", err.Error())
-			}
+			h.writeError(conn, "rpush", ERR, "failed 'rpush' command")
 			return
 		}
 
-		fmt.Fprintf(conn, ":%d\r\n", newLen)
+		h.writeInteger(conn, "rpush", newLen)
 
 		//blpop
 		if client, ok := h.subs.Get(args[0]); ok {
@@ -189,18 +157,11 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 					h.subs.Append(client, args[0])
 					return
 				}
-
 				if errors.Is(err, storage.WrongType) {
-					_, err := client.Conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
-					if err != nil {
-						fmt.Println("Error writing response 'wrongtype' on blpop (deferred in rpush): ", err.Error())
-					}
+					h.writeError(client.Conn, "rpush-blpop", WRONGTYPE, "operation against a key holding the wrong kind of value")
 					return
 				}
-
-				if _, err := client.Conn.Write([]byte("-ERR 'blpop' command\r\n")); err != nil {
-					fmt.Println("Error writing response 'ERR' on blpop (deferred in rpush): ", err.Error())
-				}
+				h.writeError(client.Conn, "rpush-blpop", ERR, "failed 'blpop' command")
 				return
 			}
 
@@ -209,84 +170,54 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 
 	case "lrange":
 		if len(args) < 3 {
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'lrange' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on lrange: ", err.Error())
-			}
+			h.writeError(conn, "lrange", ERR, "wrong number of arguments for 'lrange' command")
 			return
 		}
 
 		val, exist := h.storage.GetValue(args[0])
 		if !exist {
-			if _, err := conn.Write([]byte(writer.EmptyArray)); err != nil {
-				fmt.Println("Error writing response 'empty array' on lrange: ", err.Error())
-			}
+			h.writeNullOrEmpty(conn, "lrange: GetValue", '0')
 			return
 		}
 
 		start, err := strconv.Atoi(args[1])
 		if err != nil {
-			if _, err := conn.Write([]byte("-ERR not a numder index for 'lrange' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on lrange: ", err.Error())
-			}
+			h.writeError(conn, "lrange", ERR, "start index must be a number for 'lrange' command")
 			return
 		}
+
 		stop, err := strconv.Atoi(args[2])
 		if err != nil {
-			if _, err := conn.Write([]byte("-ERR not a numder index for 'lrange' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on lrange: ", err.Error())
-			}
+			h.writeError(conn, "lrange", ERR, "stop index must be a number for 'lrange' command")
 			return
 		}
 
 		v, ok := val.Value.([]string)
 		if !ok {
-			_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
-			if err != nil {
-				fmt.Println("Error writing response 'wrongtype' on lrange: ", err.Error())
-			}
+			h.writeError(conn, "lrange", WRONGTYPE, "operation against a key holding the wrong kind of value")
 			return
 		}
 
-		if start < 0 {
-			start = len(v)+start
-			if start < 0 {
-				start = 0
-			}
-		}
-
-		if stop < 0 {
-			stop = len(v)+stop
-			if stop < 0 {
-				stop = 0
-			}
-		}
+		normalizeIndex(&start, len(v))
+		normalizeIndex(&stop, len(v))
 
 		if start >= len(v) {
-			if _, err := conn.Write([]byte(writer.EmptyArray)); err != nil {
-				fmt.Println("Error writing response 'empty array' on lrange: ", err.Error())
-			}
+			h.writeNullOrEmpty(conn, "lrange: start > len(v)", '0')
 			return
 		}
 		if start > stop {
-			if _, err := conn.Write([]byte(writer.EmptyArray)); err != nil {
-				fmt.Println("Error writing response 'empty array' on lrange: ", err.Error())
-			}
+			h.writeNullOrEmpty(conn, "lrange: start > stop", '0')
 			return
 		}
 		if stop >= len(v) {
 			stop = len(v)-1
 		}
 
-		err = writer.WriteRESPArray(conn, v[start:stop+1]) //inclusive
-		if err != nil {
-			fmt.Println("Error writing response 'RESP array' on lrange: ", err.Error())
-		}
+		h.writeRESPArray(conn, "lrange", v[start:stop+1]) //inclusive
 
 	case "lpush":
 		if len(args) < 2 {
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'lpush' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on lpush: ", err.Error())
-			}
+			h.writeError(conn, "lpush", ERR, "wrong number of arguments for 'lpush' command")
 			return
 		}
 
@@ -299,41 +230,29 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		newLen, err := h.storage.LPush(args[0], newVals)
 		if err != nil {
 			if errors.Is(err, storage.WrongType) {
-				_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
-				if err != nil {
-					fmt.Println("Error writing response 'wrongtype' on lpush: ", err.Error())
-				}
+				h.writeError(conn, "lpush", WRONGTYPE, "operation against a key holding the wrong kind of value")
 				return
 			}
-
-			if _, err := conn.Write([]byte("-ERR 'lpush' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on lpush: ", err.Error())
-			}
+			h.writeError(conn, "lpush", ERR, "failed 'lpush' command")
 			return
 		}
 
-		fmt.Fprintf(conn, ":%d\r\n", newLen)
+		h.writeInteger(conn, "lpush", newLen)
 
 		//blpop
 		if client, ok := h.subs.Get(args[0]); ok {
 			removed, err := h.storage.LPopFirst(args[0])
 			if err != nil {
 				if errors.Is(err, storage.NoValues) {
+					// залогировать
 					h.subs.Append(client, args[0])
 					return
 				}
-
 				if errors.Is(err, storage.WrongType) {
-					_, err := client.Conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
-					if err != nil {
-						fmt.Println("Error writing response 'wrongtype' on blpop (deferred in lpush): ", err.Error())
-					}
+					h.writeError(client.Conn, "lpush-blpop", WRONGTYPE, "operation against a key holding the wrong kind of value")
 					return
 				}
-
-				if _, err := client.Conn.Write([]byte("-ERR 'blpop' command\r\n")); err != nil {
-					fmt.Println("Error writing response 'ERR' on blpop (deferred in lpush): ", err.Error())
-				}
+				h.writeError(client.Conn, "lpush-blpop", ERR, "failed 'blpop command'")
 				return
 			}
 
@@ -342,27 +261,21 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 
 	case "llen":
 		if len(args) != 1 {
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'llen' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on llen: ", err.Error())
-			}
+			h.writeError(conn, "llen", ERR, "wrong number of arguments for 'llen' command")
 			return
 		}
 
 		length, ok := h.storage.GetLen(args[0])
 		if !ok {
-			if _, err := conn.Write([]byte(":0\r\n")); err != nil {
-				fmt.Println("Error writing response ':0' on llen: ", err.Error())
-			}
+			h.writeInteger(conn, "llen-zero", 0)
 			return
 		}
 
-		fmt.Fprintf(conn, ":%d\r\n", length)
+		h.writeInteger(conn, "llen", length)
 
 	case "lpop":
 		if len(args) < 1 {
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'lpop' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on lpop: ", err.Error())
-			}
+			h.writeError(conn, "lpop", ERR, "wrong number of arguments for 'lpop' command")
 			return
 		}
 
@@ -372,9 +285,7 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		} else {
 			tmp, err  := strconv.Atoi(args[1])
 			if err != nil {
-				if _, err := conn.Write([]byte("-ERR failed convert to number argument 'lpop' command\r\n")); err != nil {
-					fmt.Println("Error writing response 'ERR' on lpop: ", err.Error())
-				}
+				h.writeError(conn, "lpop", ERR, "failed convert argument to number for 'lpop' command")
 				return
 			}
 			n = tmp
@@ -383,100 +294,147 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		removed, err := h.storage.LPop(args[0], n)
 		if err != nil {
 			if errors.Is(err, storage.WrongType) {
-				_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
-				if err != nil {
-					fmt.Println("Error writing response 'wrongtype' on lpop: ", err.Error())
-				}
+				h.writeError(conn, "lpop", WRONGTYPE, "operation against a key holding the wrong kind of value")
 				return
 			}
-			if _, err := conn.Write([]byte("-ERR failed to delete in 'lpop' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on lpop: ", err.Error())
-			}
+			h.writeError(conn, "lpop", ERR, "failed to delete in 'lpop' command")
 			return
 		}
 
 		if removed == nil {
-			if _, err := conn.Write([]byte(writer.NullBulkString)); err != nil {
-				fmt.Println("Error writing response 'null bulk string' on lpop: ", err.Error())
-			}
+			h.writeNullOrEmpty(conn, "lpop", '$')
 			return
 		}
 
 		if len(removed) == 1 {
-			if err := writer.WriteBulkString(conn, removed[0]); err != nil {
-				fmt.Println("Error writing response 'bulk string' on lpop: ", err.Error())
-			}
+			h.writeBulkString(conn, "lpop", removed[0])
 			return
 		}
 
-		if err := writer.WriteRESPArray(conn, removed); err != nil {
-			fmt.Println("Error writing response 'RESP array' on lpop: ", err.Error())
-		}
+		h.writeRESPArray(conn, "lpop", removed)
 
 	case "blpop":
 		if len(args) < 2 {
-			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'blpop' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on blpop: ", err.Error())
-			}
+			h.writeError(conn, "blpop", ERR, "wrong number of arguments for 'blpop' command")
 			return
 		}
 
 		timeoutSec, err := strconv.ParseFloat(args[1], 64)
 		if err != nil {
-			if _, err := conn.Write([]byte("-ERR arg after [key] must be a number for 'blpop' command\r\n")); err != nil {
-				fmt.Println("Error writing response 'ERR' on blpop: ", err.Error())
-			}
+			h.writeError(conn, "blpop", ERR, "argument after key must be a number for 'blpop' command")
 			return
 		}
 
 		removed, err := h.storage.LPopFirst(args[0])
 		if err != nil {
 			if errors.Is(err, storage.WrongType) {
-				_, err := conn.Write([]byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"))
-				if err != nil {
-					fmt.Println("Error writing response 'wrongtype' on blpop: ", err.Error())
-				}
+				h.writeError(conn, "blpop", WRONGTYPE, "operation against a key holding the wrong kind of value")
 				return
 			}
 
 			if !errors.Is(err, storage.NoValues) {
-				if _, err := conn.Write([]byte("-ERR failed to get value in 'blpop' command\r\n")); err != nil {
-					fmt.Println("Error writing response 'ERR' on blpop: ", err.Error())
-				}
+				h.writeError(conn, "blpop", ERR, "failed to get value in 'blpop' command")
 				return
 			}
 		}
 
 		if removed != "" {
-			if err := writer.WriteRESPArray(conn, []string{args[0], removed}); err != nil {
-				fmt.Println("Error writing response 'RESP array' on blpop: ", err.Error())
-			}
+			h.writeRESPArray(conn, "blpop", []string{args[0], removed})
 			return
 		}
+
+		// rpush/lpush may added something 
 
 		h.subs.Append(client, args[0])
 
 		if timeoutSec <= 0 {
 			res :=  <- client.WakeUpChan
-			if err := writer.WriteRESPArray(client.Conn, []string{res.Key, res.Value}); err != nil {
-				fmt.Println("Error writing response 'RESP array' on blpop deferred: ", err.Error())
-			}
-		} else {
-			timeoutDur := time.Duration(timeoutSec * float64(time.Second))
-			select {
-			case res :=  <- client.WakeUpChan:
-				if err := writer.WriteRESPArray(client.Conn, []string{res.Key, res.Value}); err != nil {
-					fmt.Println("Error writing response 'RESP array' on blpop deferred: ", err.Error())
-				}
-			case <- time.After(timeoutDur):
-				if _, err := client.Conn.Write([]byte(writer.NullArray)); err != nil {
-					fmt.Println("Error writing response 'null array timeout' on blpop deferred: ", err.Error())
-				}
-				if ok := h.subs.RemoveClient(client, args[0]); !ok {
-					fmt.Println("Error remove client from queue on blpop deferred")
-				}
+			h.writeRESPArray(client.Conn, "blpop", []string{res.Key, res.Value})
+			return
+		}
+
+		timer := time.NewTimer(time.Duration(timeoutSec * float64(time.Second)))
+		select {
+		case res := <- client.WakeUpChan:
+			timer.Stop()
+			h.writeRESPArray(client.Conn, "blpop", []string{res.Key, res.Value})
+		case <- timer.C:
+			h.writeNullOrEmpty(client.Conn, "blpop timeout", '*')
+			if ok := h.subs.RemoveClient(client, args[0]); !ok {
+				fmt.Println("failed to remove client from queue on blpop deferred")
 			}
 		}
 		
 	}
+}
+
+// -ERR msg\r\n -WRONGTYPE msg\r\n
+func (h *Handler) writeError(conn net.Conn, from string, code string, msg string) {
+	switch code {
+	case ERR:
+		if _, err := conn.Write([]byte("-ERR " + msg + "\r\n")); err != nil {
+			fmt.Printf("failed to write some error from '%s': %v\n", from, err)
+		}
+	case WRONGTYPE:
+		if _, err := conn.Write([]byte("-WRONGTYPE " + msg + "\r\n")); err != nil {
+			fmt.Printf("failed to write error wrongtype from '%s': %v\n", from, err)
+		}
+	default:
+		fmt.Printf("WARN failed to write some error: unknown type '%s' from '%s'\n", code, from)
+	}
+}
+
+// +msg\r\n
+func (h *Handler) writeSimpleString(conn net.Conn, from string, msg string) {
+	if _, err := conn.Write([]byte("+" + msg + "\r\n")); err != nil {
+        fmt.Printf("failed to write simple string from '%s': %v\n", from, err)
+    }
+}
+
+// :num\r\n
+func (h *Handler) writeInteger(conn net.Conn, from string, num int) {
+	if _, err := fmt.Fprintf(conn, ":%d\r\n", num); err != nil {
+		fmt.Printf("failed to write RESP integer from '%s': %v\n", from, err)
+	}
+}
+
+// null string $-1\r\n or null array *-1\r\n or empty *0\r\n
+func (h *Handler) writeNullOrEmpty(conn net.Conn, from string, typeResp byte) {
+	switch typeResp {
+	case '$':
+		if _, err := conn.Write([]byte(writer.NullBulkString)); err != nil {
+			fmt.Printf("failed to write null bulk string from '%s': %v\n", from, err)
+		}
+	case '*':
+		if _, err := conn.Write([]byte(writer.NullArray)); err != nil {
+			fmt.Printf("failed to write null array from '%s': %v\n", from, err)
+		}
+	case '0':
+		if _, err := conn.Write([]byte(writer.EmptyArray)); err != nil {
+			fmt.Printf("failed to write empty array from '%s': %v\n", from, err)
+		}
+	default:
+		fmt.Printf("WARN failed to write null string or array: unknown type '%c' from '%s'\n", typeResp, from)
+	}
+}
+
+func (h *Handler) writeBulkString(conn net.Conn, from string, item string) {
+	if err := writer.WriteBulkString(conn, item); err != nil {
+		fmt.Printf("failed to write bulk string from '%s': %v\n", from, err)
+	}
+}
+
+func (h *Handler) writeRESPArray(conn net.Conn, from string, items []string) {
+	if err := writer.WriteRESPArray(conn, items); err != nil {
+		fmt.Printf("failed to write RESP array from '%s': %v\n", from, err)
+	}
+}
+
+func normalizeIndex(idx *int, length int) {
+    if *idx < 0 {
+        *idx += length
+        if *idx < 0 {
+            *idx = 0
+        }
+    }
 }

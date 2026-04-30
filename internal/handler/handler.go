@@ -402,6 +402,8 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 			return
 		}
 
+		fmt.Println(args[1], " = ", timeoutSec)
+
 		removed, err := h.storage.LPopFirst(args[0])
 		if err != nil {
 			if errors.Is(err, storage.WrongType) {
@@ -429,7 +431,6 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 
 		h.subs.Append(client, args[0])
 
-
 		if timeoutSec <= 0 {
 			res :=  <- client.WakeUpChan
 			if err := writer.WriteRESPArray(client.Conn, []string{res.Key, res.Value}); err != nil {
@@ -437,6 +438,7 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 			}
 		} else {
 			timeoutDur := time.Duration(timeoutSec * float64(time.Second))
+			fmt.Println(timeoutDur)
 			select {
 			case res :=  <- client.WakeUpChan:
 				if err := writer.WriteRESPArray(client.Conn, []string{res.Key, res.Value}); err != nil {

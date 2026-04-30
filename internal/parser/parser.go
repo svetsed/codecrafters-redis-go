@@ -78,7 +78,6 @@ func (p *Parser) HandleConn(conn net.Conn) {
     }
 
 	defer func() {
-		close(client.WakeUpChan)
 		client.Conn.Close()
 	}()
 

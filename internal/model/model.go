@@ -4,7 +4,7 @@ import "net"
 
 type Entry struct {
 	Value     any
-	ExpiresAt int64
+	ExpiresAt int64 // in milliseconds
 }
 
 type Client struct {

@@ -61,19 +61,29 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 		}
 
 	case "set":
-		if len(args) < 2 || len(args) == 3 { // min key value
+		if len(args) < 2 { // min key value
 			if _, err := conn.Write([]byte("-ERR wrong number of arguments for 'set' command\r\n")); err != nil {
 				fmt.Println("Error writing response 'ERR' on set: ", err.Error())
 			}
 			return
 		} 
 		
-		if len(args) == 2 {
-			h.storage.SetValue(args[0], model.Entry{Value: args[1], ExpiresAt: -1})
-		} else if len(args) >= 4 { // key value [px] time
-			if strings.ToLower(args[2]) == "px" {
-				var expiresAt int64 = -1
-				ms, err := strconv.Atoi(args[3])
+		value := args[1]
+		var expiresAt int64 = -1
+		if len(args) > 2 {
+			i := 2
+			opt := strings.ToLower(args[i])
+			if i+1 >= len(args) {
+				if _, err := conn.Write([]byte("-ERR missing value for option\r\n")); err != nil {
+					fmt.Println("Error writing response 'ERR' on set: ", err.Error())
+				}
+				return
+			}
+			valStr := args[i+1]
+			switch opt {
+			case "px":
+				// milliseconds
+				ms, err :=  strconv.ParseInt(valStr, 10, 64)
 				if err != nil {
 					if _, err := conn.Write([]byte("-ERR arg after [px] must be a number for 'set' command\r\n")); err != nil {
 						fmt.Println("Error writing response 'ERR' on set: ", err.Error())
@@ -83,10 +93,27 @@ func (h *Handler) HandleArgs(client *model.Client, cmdAndArgs ...string) {
 				if ms > 0 {
 					expiresAt = time.Now().UnixNano()/1e6 + int64(ms)
 				}
-				h.storage.SetValue(args[0], model.Entry{Value: args[1], ExpiresAt: expiresAt})
+			case "ex":
+				// seconds
+				sec, err :=  strconv.ParseInt(valStr, 10, 64)
+				if err != nil {
+					if _, err := conn.Write([]byte("-ERR arg after [ex] must be a number for 'set' command\r\n")); err != nil {
+						fmt.Println("Error writing response 'ERR' on set: ", err.Error())
+					}
+					return
+				}
+				if sec > 0 {
+					expiresAt = time.Now().UnixNano()/1e6 + int64(sec*1000)
+				}
+			default:
+				if _, err := conn.Write([]byte("-ERR unknown options for 'set' command\r\n")); err != nil {
+					fmt.Println("Error writing response 'ERR' on set: ", err.Error())
+				}
+				return
 			}
 		}
 
+		h.storage.SetValue(args[0], model.Entry{Value: value, ExpiresAt: expiresAt})
 		if _, err := conn.Write([]byte("+OK\r\n")); err != nil {
 			fmt.Println("Error writing response 'OK' on set: ", err.Error())
 		}
